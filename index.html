@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gotta Catch 'Em All</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Press Start 2P', cursive;
+            background-color: #2a2a2a;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            flex-direction: column;
+        }
+
+        .container {
+            background: #f4c542;
+            padding: 20px;
+            border: 5px solid black;
+            border-radius: 8px;
+            width: 350px;
+            text-align: center;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+        }
+
+        h1 {
+            margin-bottom: 20px;
+        }
+
+        .button {
+            background: #ff4c4c;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            border-radius: 5px;
+            transition: background 0.3s;
+            margin: 5px;
+        }
+
+        .button:hover {
+            background: #ff7a7a;
+        }
+
+        .caught-pokemon {
+            background: white;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 5px;
+            color: black;
+            display: none; /* Initially hidden */
+        }
+
+        .pokedex {
+            margin-top: 15px;
+            background: #fff;
+            padding: 10px;
+            border-radius: 5px;
+            color: black;
+            text-align: left;
+        }
+
+        .pokemon-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .pokemon {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #e2e2e2;
+            padding: 5px;
+            border-radius: 5px;
+            width: 60px;
+        }
+
+        .pokemon.shiny {
+            border: 2px solid gold;
+        }
+
+        img {
+            max-width: 100%;
+        }
+
+        .intro-screen {
+            display: none; /* Initially hidden */
+        }
+    </style>
+</head>
+<body>
+
+<!-- Intro Screen -->
+<div class="container intro-screen" id="introScreen">
+    <h1>Welcome to Pokémon Catcher!</h1>
+    <div id="randomPokemon"></div>
+    <button class="button" id="startGameButton">Start Game</button>
+</div>
+
+<!-- Game Mechanics Screen -->
+<div class="container game-mechanics-screen" id="gameMechanicsScreen" style="display: none;">
+    <h1>Game Mechanics</h1>
+    <p>Welcome to the Pokémon Catcher game! Here’s how to play:</p>
+    <ul>
+        <li>Connect your wallet using the "Connect Wallet" button.</li>
+        <li>Each game costs 10 PLS.</li>
+        <li>Catch Pokémon to fill your Pokédex!</li>
+        <li>You can see the caught Pokémon below.</li>
+    </ul>
+    <button class="button" id="backToIntroButton">Back to Intro</button>
+    <button class="button" id="backToGameButton" style="display: none;">Back to Game</button>
+</div>
+
+<!-- Main Game Screen -->
+<div class="container" id="mainScreen" style="display: none;">
+    <h1>Gotta Catch 'Em All</h1>
+    <button class="button" id="connectWalletButton">Connect Wallet</button>
+    <button class="button" id="joinGameButton" disabled>Catch a Pokémon (10 PLS)</button>
+    <div class="caught-pokemon" id="caughtPokemonDisplay"></div>
+    <div class="pokedex" id="pokedex">
+        <h2>Pokédex</h2>
+        <div class="pokemon-list" id="pokemonList"></div>
+    </div>
+    <button class="button" id="gameMechanicsButton">Game Mechanics</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers/dist/ethers.umd.min.js"></script>
+<script>
+    const ENTRY_FEE = 10; // 10 PLS
+    const contractAddress = "0x057C94Ce694ab2612D4eFD12F9Be0B8431E9b603"; // Your contract address
+    const abi = [
+        // Your contract's ABI
+        {
+            "inputs": [],
+            "stateMutability": "nonpayable",
+            "type": "constructor"
+        },
+        {
+            "anonymous": false,
+            "inputs": [
+                {
+                    "indexed": false,
+                    "internalType": "uint256",
+                    "name": "amount",
+                    "type": "uint256"
+                }
+            ],
+            "name": "DeveloperFundSent",
+            "type": "event"
+        },
+        {
+            "inputs": [],
+            "name": "distributeYield",
+            "outputs": [],
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "anonymous": false,
+            "inputs": [
+                {
+                    "indexed": false,
+                    "internalType": "uint256",
+                    "name": "amount",
+                    "type": "uint256"
+                }
+            ],
+            "name": "InsuranceFundSent",
+            "type": "event"
+        },
+        {
+            "inputs": [],
+            "name": "joinGame",
+            "outputs": [],
+            "stateMutability": "payable",
+            "type": "function"
+        },
+        {
+            "anonymous": false,
+            "inputs": [
+                {
+                    "indexed": false,
+                    "internalType": "address",
+                    "name": "player",
+                    "type": "address"
+                },
+                {
+                    "indexed": false,
+                    "internalType": "uint256",
+                    "name": "gameCount",
+                    "type": "uint256"
+                }
+            ],
+            "name": "PlayerJoined",
+            "type": "event"
+        },
+        {
+            "inputs": [],
+            "name": "receiveYield",
+            "outputs": [],
+            "stateMutability": "payable",
+            "type": "function"
+        },
+        {
+            "anonymous": false,
+            "inputs": [
+                {
+                    "indexed": false,
+                    "internalType": "address",
+                    "name": "player",
+                    "type": "address"
+                },
+                {
+                    "indexed": false,
+                    "internalType": "uint256",
+                    "name": "amount",
+                    "type": "uint256"
+                }
+            ],
+            "name": "RewardsDistributed",
+            "type": "event"
+        },
+        {
+            "inputs": [],
+            "name": "withdrawYield",
+            "outputs": [],
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "anonymous": false,
+            "inputs": [
+                {
+                    "indexed": false,
+                    "internalType": "address",
+                    "name": "player",
+                    "type": "address"
+                },
+                {
+                    "indexed": false,
+                    "internalType": "uint256",
+                    "name": "amount",
+                    "type": "uint256"
+                }
+            ],
+            "name": "YieldDistributed",
+            "type": "event"
+        },
+        {
+            "inputs": [],
+            "name": "getContractBalance",
+            "outputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "",
+                    "type": "uint256"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "index",
+                    "type": "uint256"
+                }
+            ],
+            "name": "getPlayerByGameIndex",
+            "outputs": [
+                {
+                    "internalType": "address",
+                    "name": "",
+                    "type": "address"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "player",
+                    "type": "address"
+                }
+            ],
+            "name": "getPlayerGameCount",
+            "outputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "",
+                    "type": "uint256"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "player",
+                    "type": "address"
+                }
+            ],
+            "name": "getPlayerYieldBalance",
+            "outputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "",
+                    "type": "uint256"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [],
+            "name": "getTotalGamesPlayed",
+            "outputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "",
+                    "type": "uint256"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [],
+            "name": "INSURANCE_FUND_ADDRESS",
+            "outputs": [
+                {
+                    "internalType": "address",
+                    "name": "",
+                    "type": "address"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [],
+            "name": "INSURANCE_FUND_PERCENT",
+            "outputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "",
+                    "type": "uint256"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "",
+                    "type": "address"
+                }
+            ],
+            "name": "playerGameCount",
+            "outputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "",
+                    "type": "uint256"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "",
+                    "type": "address"
+                }
+            ],
+            "name": "playerLastGameIndex",
+            "outputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "",
+                    "type": "uint256"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "",
+                    "type": "uint256"
+                }
+            ],
+            "name": "players",
+            "outputs": [
+                {
+                    "internalType": "address",
+                    "name": "",
+                    "type": "address"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "",
+                    "type": "address"
+                }
+            ],
+            "name": "playerYieldBalance",
+            "outputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "",
+                    "type": "uint256"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [],
+            "name": "RANDOM_REWARD_PERCENT",
+            "outputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "",
+                    "type": "uint256"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [],
+            "name": "totalGamesPlayed",
+            "outputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "",
+                    "type": "uint256"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [],
+            "name": "totalYieldReceived",
+            "outputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "",
+                    "type": "uint256"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [],
+            "name": "UPLINE_REWARD_PERCENT",
+            "outputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "",
+                    "type": "uint256"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        }
+    ];
+
+    const pokemonImages = [
+        "https://pokeapi.co/media/sprites/pokemon/1.png",
+        "https://pokeapi.co/media/sprites/pokemon/2.png",
+        "https://pokeapi.co/media/sprites/pokemon/3.png",
+        "https://pokeapi.co/media/sprites/pokemon/4.png",
+        "https://pokeapi.co/media/sprites/pokemon/5.png",
+        "https://pokeapi.co/media/sprites/pokemon/6.png",
+        "https://pokeapi.co/media/sprites/pokemon/7.png",
+        "https://pokeapi.co/media/sprites/pokemon/8.png",
+        "https://pokeapi.co/media/sprites/pokemon/9.png",
+        "https://pokeapi.co/media/sprites/pokemon/10.png",
+        // Add more Pokémon URLs as needed
+    ];
+
+    let provider;
+    let contract;
+    let signer;
+    let userAddress;
+
+    async function initialize() {
+        // Show intro screen
+        document.getElementById('introScreen').style.display = 'flex';
+        // Show random Pokémon
+        showRandomPokemon();
+    }
+
+    function showRandomPokemon() {
+        const randomIndex = Math.floor(Math.random() * pokemonImages.length);
+        const pokemonImage = pokemonImages[randomIndex];
+        const randomPokemonDiv = document.getElementById('randomPokemon');
+        randomPokemonDiv.innerHTML = `<img src="${pokemonImage}" alt="Random Pokémon">`;
+    }
+
+    async function connectWallet() {
+        try {
+            await provider.send("eth_requestAccounts", []); // Request account
+            signer = provider.getSigner();
+            userAddress = await signer.getAddress(); // Get user address
+            contract = new ethers.Contract(contractAddress, abi, signer);
+            document.getElementById('joinGameButton').disabled = false; // Enable button after connecting
+            console.log("Wallet connected:", userAddress);
+            switchToMainScreen();
+        } catch (error) {
+            console.error("Could not connect wallet:", error);
+            alert("Could not connect wallet. Please try again.");
+        }
+    }
+
+    function switchToMainScreen() {
+        document.getElementById('introScreen').style.display = 'none';
+        document.getElementById('gameMechanicsScreen').style.display = 'none';
+        document.getElementById('mainScreen').style.display = 'flex';
+    }
+
+    function switchToGameMechanics() {
+        document.getElementById('mainScreen').style.display = 'none';
+        document.getElementById('gameMechanicsScreen').style.display = 'flex';
+    }
+
+    async function joinGame() {
+        try {
+            const entryFee = ethers.utils.parseEther(ENTRY_FEE.toString());
+            const tx = await contract.joinGame({ value: entryFee });
+            await tx.wait();
+            alert("You caught a Pokémon!");
+            updateCaughtPokemonDisplay();
+            // Optionally, fetch the updated Pokémon list can be done here
+        } catch (error) {
+            console.error("Error joining game:", error);
+            alert("Error joining the game, please try again.");
+        }
+    }
+
+    function updateCaughtPokemonDisplay() {
+        const caughtPokemonDisplay = document.getElementById('caughtPokemonDisplay');
+        caughtPokemonDisplay.style.display = 'block';
+        caughtPokemonDisplay.innerHTML = `You have caught a Pokémon!`;
+    }
+
+    // Event Listeners
+    document.getElementById('startGameButton').addEventListener('click', connectWallet);
+    document.getElementById('joinGameButton').addEventListener('click', joinGame);
+    document.getElementById('gameMechanicsButton').addEventListener('click', switchToGameMechanics);
+    document.getElementById('backToIntroButton').addEventListener('click', () => {
+        document.getElementById('gameMechanicsScreen').style.display = 'none';
+        document.getElementById('introScreen').style.display = 'flex';
+    });
+    document.getElementById('backToGameButton').addEventListener('click', () => {
+        document.getElementById('gameMechanicsScreen').style.display = 'none';
+        document.getElementById('mainScreen').style.display = 'flex';
+    });
+
+    window.addEventListener('load', initialize);
+</script>
+
+</body>
+</html>
